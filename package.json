@@ -1,6 +1,6 @@
 {
   "name": "pi-terminal-branch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open cloned or forked Pi sessions in a new Windows Terminal pane, tab, or window",
   "type": "module",
   "license": "MIT",

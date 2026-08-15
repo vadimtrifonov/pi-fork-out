@@ -15,8 +15,8 @@ pi install git:github.com/vadimtrifonov/pi-terminal-branch
 ## Usage
 
 ```text
-/clone-out [pane|tab|window]  # Clone the current position
-/fork-out  [pane|tab|window]  # Select an earlier user message
+/clone-out [pane|tab|window]  # Duplicate the current session at the current position (default: `pane`)
+/fork-out  [pane|tab|window]  # Create a new fork from a previous user message (default: `pane`)
 ```
 
 ## License

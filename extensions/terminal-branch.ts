@@ -35,7 +35,7 @@ function parseDestination(
 
 	const destination = args.trim().toLowerCase() || "pane";
 	if (!isDestination(destination)) {
-		ctx.ui.notify(`Usage: /${command} [pane|tab|window]`, "error");
+		ctx.ui.notify(`Usage: /${command} [pane|tab|window] (default: pane)`, "error");
 		return undefined;
 	}
 	if (process.platform !== "win32") {
@@ -200,7 +200,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("clone-out", {
-		description: "Clone the current session into a new Windows Terminal pane, tab, or window",
+		description:
+			"Duplicate the current session at the current position in a new Windows Terminal pane, tab, or window (default: pane)",
 		handler: async (args, ctx) => {
 			const destination = parseDestination("clone-out", args, ctx);
 			if (!destination) return;
@@ -226,7 +227,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("fork-out", {
-		description: "Fork from an earlier user message into a new Windows Terminal pane, tab, or window",
+		description:
+			"Create a new fork from a previous user message in a new Windows Terminal pane, tab, or window (default: pane)",
 		handler: async (args, ctx) => {
 			const destination = parseDestination("fork-out", args, ctx);
 			if (!destination) return;
