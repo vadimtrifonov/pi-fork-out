@@ -1,24 +1,23 @@
 {
-  "name": "pi-branch",
+  "name": "pi-terminal-branch",
   "version": "0.1.0",
-  "description": "Branch a Pi session into a new Windows Terminal pane, tab, or window",
+  "description": "Open cloned or forked Pi sessions in a new Windows Terminal pane, tab, or window",
   "type": "module",
   "license": "MIT",
   "author": "Vadim Trifonov",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vadimtrifonov/pi-branch.git"
+    "url": "git+https://github.com/vadimtrifonov/pi-terminal-branch.git"
   },
-  "homepage": "https://github.com/vadimtrifonov/pi-branch#readme",
+  "homepage": "https://github.com/vadimtrifonov/pi-terminal-branch#readme",
   "bugs": {
-    "url": "https://github.com/vadimtrifonov/pi-branch/issues"
+    "url": "https://github.com/vadimtrifonov/pi-terminal-branch/issues"
   },
   "keywords": [
     "pi-package",
     "pi-extension",
     "pi-coding-agent",
     "windows-terminal",
-    "powershell",
     "session-branching"
   ],
   "files": [
@@ -28,10 +27,11 @@
   ],
   "pi": {
     "extensions": [
-      "./extensions/branch.ts"
+      "./extensions/terminal-branch.ts"
     ]
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   }
 }

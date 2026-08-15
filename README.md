@@ -1,25 +1,22 @@
-# pi-branch
+# pi-terminal-branch
 
-A minimal [Pi](https://pi.dev) extension for branching into a new Windows Terminal pane, tab, or window while keeping the original session open. It copies the current active path through Pi's session tree into a new session file and launches `pi --session <file>` in PowerShell.
+A [Pi](https://pi.dev) extension that opens clones and forks in a new Windows Terminal pane, tab, or window while keeping the original session open. It copies the selected path through Pi's session tree into a new session file and launches Pi directly with `--session <file>`.
 
 ## Requirements
 
 - Windows Terminal (`wt.exe`)
-- PowerShell 7 (`pwsh.exe`)
 
 ## Install
 
 ```shell
-pi install git:github.com/vadimtrifonov/pi-branch
+pi install git:github.com/vadimtrifonov/pi-terminal-branch
 ```
 
 ## Usage
 
 ```text
-/branch          # New pane on the right (default)
-/branch pane     # New pane on the right
-/branch tab      # New tab
-/branch window   # New Windows Terminal window
+/clone-out [pane|tab|window]  # Clone the current position
+/fork-out  [pane|tab|window]  # Select an earlier user message
 ```
 
 ## License
