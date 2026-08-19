@@ -82,7 +82,8 @@ function launchBranch(destination: Destination, cwd: string, sessionFile: string
 		const child = spawn("wt.exe", args, {
 			detached: true,
 			stdio: "ignore",
-			windowsHide: true,
+			// SW_HIDE also hides a newly created Terminal window.
+			windowsHide: destination !== "window",
 		});
 		child.once("error", reject);
 		child.once("spawn", () => {
