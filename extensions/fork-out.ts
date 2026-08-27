@@ -12,8 +12,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 const DESTINATIONS = ["pane", "tab", "window"] as const;
-const FORK_DRAFT = "pi-terminal-branch-fork-draft";
-const FORK_DRAFT_APPLIED = "pi-terminal-branch-fork-draft-applied";
+const FORK_DRAFT = "pi-fork-out-fork-draft";
+const FORK_DRAFT_APPLIED = "pi-fork-out-fork-draft-applied";
 
 type Destination = (typeof DESTINATIONS)[number];
 type ForkDraft = { id: string; text: string };
