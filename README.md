@@ -1,6 +1,8 @@
-# pi-terminal-branch
+# pi-fork-out
 
-A [Pi](https://pi.dev) extension that opens clones and forks in a new Windows Terminal pane, tab, or window while keeping the original session open. It copies the selected path through Pi's session tree into a new session file and launches Pi directly with `--session <file>`.
+A [Pi](https://pi.dev) extension that opens a clone or fork in a new Windows Terminal pane, tab, or window. The original session stays open.
+
+The extension copies the selected path through Pi's session tree into a new session file. It starts Pi with `--session <file>`.
 
 ## Requirements
 
@@ -9,7 +11,7 @@ A [Pi](https://pi.dev) extension that opens clones and forks in a new Windows Te
 ## Install
 
 ```shell
-pi install git:github.com/vadimtrifonov/pi-terminal-branch
+pi install git:github.com/vadimtrifonov/pi-fork-out
 ```
 
 ## Usage

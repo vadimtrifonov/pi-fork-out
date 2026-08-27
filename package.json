@@ -1,5 +1,5 @@
 {
-  "name": "pi-terminal-branch",
+  "name": "pi-fork-out",
   "version": "0.1.3",
   "description": "Open cloned or forked Pi sessions in a new Windows Terminal pane, tab, or window",
   "type": "module",
@@ -7,11 +7,11 @@
   "author": "Vadim Trifonov",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/vadimtrifonov/pi-terminal-branch.git"
+    "url": "git+https://github.com/vadimtrifonov/pi-fork-out.git"
   },
-  "homepage": "https://github.com/vadimtrifonov/pi-terminal-branch#readme",
+  "homepage": "https://github.com/vadimtrifonov/pi-fork-out#readme",
   "bugs": {
-    "url": "https://github.com/vadimtrifonov/pi-terminal-branch/issues"
+    "url": "https://github.com/vadimtrifonov/pi-fork-out/issues"
   },
   "keywords": [
     "pi-package",
@@ -27,7 +27,7 @@
   ],
   "pi": {
     "extensions": [
-      "./extensions/terminal-branch.ts"
+      "./extensions/fork-out.ts"
     ]
   },
   "peerDependencies": {
