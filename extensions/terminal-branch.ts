@@ -58,12 +58,22 @@ function getSessionFile(ctx: ExtensionCommandContext): string | undefined {
 	return sessionFile;
 }
 
-function launchBranch(destination: Destination, cwd: string, sessionFile: string): Promise<void> {
+function getPiInvocation(): string[] {
 	const piEntry = process.argv[1];
-	if (!piEntry) throw new Error("Could not locate the Pi CLI entrypoint");
-	const piCli = resolve(piEntry);
-	if (!existsSync(piCli)) throw new Error("Could not locate the Pi CLI entrypoint");
+	if (piEntry) {
+		const piCli = resolve(piEntry);
+		if (existsSync(piCli)) return [process.execPath, piCli];
 
+		// mise installations are versioned, so an update can remove this process's entrypoint.
+		const normalizedEntry = piCli.replaceAll("\\", "/").toLowerCase();
+		if (normalizedEntry.includes("/mise/installs/")) return ["mise.exe", "exec", "--", "pi"];
+	}
+
+	throw new Error("Could not locate the Pi CLI entrypoint");
+}
+
+function launchBranch(destination: Destination, cwd: string, sessionFile: string): Promise<void> {
+	const piInvocation = getPiInvocation();
 	const action = destination === "pane" ? ["split-pane", "--vertical"] : ["new-tab"];
 	const window = destination === "window" ? "new" : "0";
 	const args = [
@@ -72,8 +82,7 @@ function launchBranch(destination: Destination, cwd: string, sessionFile: string
 		...action,
 		"--startingDirectory",
 		cwd,
-		process.execPath,
-		piCli,
+		...piInvocation,
 		"--session",
 		sessionFile,
 	];
