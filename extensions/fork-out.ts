@@ -49,15 +49,6 @@ function parseDestination(
 	return destination;
 }
 
-function getSessionFile(ctx: ExtensionCommandContext): string | undefined {
-	const sessionFile = ctx.sessionManager.getSessionFile();
-	if (!sessionFile || !existsSync(sessionFile)) {
-		ctx.ui.notify("Nothing persisted yet; wait for the first response, then try again", "error");
-		return undefined;
-	}
-	return sessionFile;
-}
-
 function getPiInvocation(): string[] {
 	const piEntry = process.argv[1];
 	if (piEntry) {
@@ -102,45 +93,29 @@ function launchBranch(destination: Destination, cwd: string, sessionFile: string
 	});
 }
 
-function ensurePersisted(manager: SessionManager): string {
-	const sessionFile = manager.getSessionFile();
-	const header = manager.getHeader();
+function createBranch(ctx: ExtensionCommandContext, leafId: string | null, draftText?: string): string {
+	const source = ctx.sessionManager;
+	const parentSession = source.getSessionFile();
+	if (!parentSession) throw new Error("Session persistence is disabled; start Pi without --no-session");
+
+	// Read recorded entries, including those not yet flushed during the first response.
+	// Branch only the detached copy: ctx.fork() would replace the running session.
+	const snapshot = SessionManager.inMemory(source.getCwd(), undefined, leafId ? source.getEntries() : undefined);
+	if (leafId) snapshot.createBranchedSession(leafId);
+	if (draftText !== undefined) snapshot.appendCustomEntry(FORK_DRAFT, { text: draftText });
+
+	const branch = SessionManager.create(source.getCwd(), source.getSessionDir(), { parentSession });
+	const sessionFile = branch.getSessionFile();
+	const header = branch.getHeader();
 	if (!sessionFile || !header) throw new Error("Could not create the branched session");
 
-	// Pi defers files without an assistant response, but the child needs one for --session.
-	if (!existsSync(sessionFile)) {
-		const entries = [header, ...manager.getEntries()];
-		writeFileSync(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, {
-			encoding: "utf8",
-			flag: "wx",
-		});
-	}
-
+	// The child needs a file for --session even if no assistant message exists yet.
+	const entries = [header, ...snapshot.getEntries()];
+	writeFileSync(sessionFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, {
+		encoding: "utf8",
+		flag: "wx",
+	});
 	return sessionFile;
-}
-
-function createClone(sessionFile: string, leafId: string): string {
-	const manager = SessionManager.open(sessionFile);
-	manager.createBranchedSession(leafId);
-	return ensurePersisted(manager);
-}
-
-function createFork(sessionFile: string, choice: ForkChoice): string {
-	// ctx.fork() replaces the current runtime; a detached manager keeps the original running.
-	const sourceManager = SessionManager.open(sessionFile);
-	let forkManager: SessionManager;
-
-	if (choice.entry.parentId) {
-		sourceManager.createBranchedSession(choice.entry.parentId);
-		forkManager = sourceManager;
-	} else {
-		forkManager = SessionManager.create(sourceManager.getCwd(), sourceManager.getSessionDir(), {
-			parentSession: sessionFile,
-		});
-	}
-
-	forkManager.appendCustomEntry(FORK_DRAFT, { text: choice.text });
-	return ensurePersisted(forkManager);
 }
 
 function getForkChoices(ctx: ExtensionCommandContext): ForkChoice[] {
@@ -168,15 +143,20 @@ async function selectForkChoice(
 		);
 		const messageList = selector.getMessageList();
 
-		return {
-			render: (width) => selector.render(width),
+		const component = {
+			focused: false,
+			render(width: number) {
+				// Don't cover a tool dialog that temporarily takes keyboard focus.
+				return this.focused ? selector.render(width) : [];
+			},
 			invalidate: () => selector.invalidate(),
-			handleInput: (data) => {
+			handleInput: (data: string) => {
 				messageList.handleInput(data);
 				tui.requestRender();
 			},
 		};
-	});
+		return component;
+	}, { overlay: true });
 
 	return choices.find(({ entry }) => entry.id === selectedId);
 }
@@ -216,17 +196,14 @@ export default function (pi: ExtensionAPI) {
 			const destination = parseDestination("clone-out", args, ctx);
 			if (!destination) return;
 
-			await ctx.waitForIdle();
 			const leafId = ctx.sessionManager.getLeafId();
 			if (!leafId) {
 				ctx.ui.notify("Nothing to clone yet", "error");
 				return;
 			}
-			const sessionFile = getSessionFile(ctx);
-			if (!sessionFile) return;
 
 			try {
-				const cloneFile = createClone(sessionFile, leafId);
+				const cloneFile = createBranch(ctx, leafId);
 				await launchBranch(destination, ctx.cwd, cloneFile);
 				ctx.ui.notify(`Opened clone in a new ${destination}`, "info");
 			} catch (error) {
@@ -243,10 +220,6 @@ export default function (pi: ExtensionAPI) {
 			const destination = parseDestination("fork-out", args, ctx);
 			if (!destination) return;
 
-			await ctx.waitForIdle();
-			const sessionFile = getSessionFile(ctx);
-			if (!sessionFile) return;
-
 			const choices = getForkChoices(ctx);
 			if (choices.length === 0) {
 				ctx.ui.notify("No user messages to fork from", "error");
@@ -257,7 +230,7 @@ export default function (pi: ExtensionAPI) {
 			if (!choice) return;
 
 			try {
-				const forkFile = createFork(sessionFile, choice);
+				const forkFile = createBranch(ctx, choice.entry.parentId, choice.text);
 				await launchBranch(destination, ctx.cwd, forkFile);
 				ctx.ui.notify(`Opened fork in a new ${destination}`, "info");
 			} catch (error) {
