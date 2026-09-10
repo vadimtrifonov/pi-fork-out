@@ -1,8 +1,10 @@
 # pi-fork-out
 
-A [Pi](https://pi.dev) extension that opens a clone or fork in a new Windows Terminal pane, tab, or window. The original session stays open.
+A [Pi](https://pi.dev) extension that opens a clone or fork in a new Windows Terminal pane, tab, or window.
+The original session stays open.
 
-The extension copies the selected path through Pi's session tree into a new session file. It starts Pi with `--session <file>`.
+The extension copies the selected path through Pi's session tree into a new session file.
+It starts Pi with `--session <file>`.
 
 ## Requirements
 
