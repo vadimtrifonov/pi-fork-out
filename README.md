@@ -1,14 +1,17 @@
 # pi-fork-out
 
-A [Pi](https://pi.dev) extension that opens a clone or fork in a new Windows Terminal pane, tab, or window.
+A [Pi](https://pi.dev) extension that clones or forks conversations into separate terminal sessions.
 The original session stays open.
 
-The extension copies the selected path through Pi's session tree into a new session file.
-It starts Pi with `--session <file>`.
+## Supported terminals
 
-## Requirements
+| Terminal         | Platform             | Destinations            | Default |
+| ---------------- | -------------------- | ----------------------- | ------- |
+| Windows Terminal | Windows              | `pane`, `tab`, `window` | `pane`  |
+| Warp             | Windows, macOS (zsh) | `tab`, `window`         | `tab`   |
 
-- Windows Terminal (`wt.exe`)
+Warp tabs open in the currently focused Warp window.
+Paths containing `{{` are not supported with Warp.
 
 ## Install
 
