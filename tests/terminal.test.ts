@@ -1,29 +1,45 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { resolveTarget } from "../extensions/fork-out/terminals/index.ts";
-import { warp } from "../extensions/fork-out/terminals/warp.ts";
+import { herdr } from "../extensions/fork-out/terminals/herdr.ts";
 import { windowsTerminal } from "../extensions/fork-out/terminals/windows-terminal.ts";
 
-const warpEnv = { TERM_PROGRAM: "WarpTerminal" };
+const herdrEnv = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", WT_SESSION: "inherited" };
 
-test("Warp defaults to tabs on both platforms and takes precedence over inherited WT_SESSION", () => {
-	for (const platform of ["win32", "darwin"] as const) {
-		assert.deepEqual(resolveTarget("", platform, { ...warpEnv, WT_SESSION: "inherited" }), { adapter: warp, destination: "tab" });
-		assert.deepEqual(resolveTarget(" WINDOW ", platform, warpEnv), { adapter: warp, destination: "window" });
-		assert.throws(() => resolveTarget("pane", platform, warpEnv), /tab or window/);
-		assert.throws(() => resolveTarget("invalid", platform, warpEnv), /tab or window/);
+test("Herdr supports Windows, macOS, and Linux ahead of inherited WT_SESSION", () => {
+	for (const platform of ["win32", "darwin", "linux"] as const) {
+		assert.deepEqual(resolveTarget(" ", platform, herdrEnv), { adapter: herdr, destination: "pane" });
+		for (const destination of ["pane", "tab"]) {
+			assert.deepEqual(resolveTarget(` ${destination.toUpperCase()} `, platform, herdrEnv), { adapter: herdr, destination });
+		}
 	}
-	assert.throws(() => resolveTarget("tab", "linux", warpEnv), /not supported on linux/);
 });
 
-test("Windows Terminal retains its destinations and outside-terminal window launch", () => {
+test("invalid destinations report the shared command choices regardless of terminal", () => {
+	for (const env of [herdrEnv, { WT_SESSION: "parent" }, {}]) {
+		assert.throws(() => resolveTarget("windw", "win32", env), {
+			message: "Use pane, tab, or window (default: pane)",
+		});
+	}
+});
+
+test("window always opens Windows Terminal on Windows, including inside Herdr", () => {
+	for (const env of [herdrEnv, { HERDR_ENV: "1" }, { WT_SESSION: "parent" }, {}]) {
+		assert.deepEqual(resolveTarget(" WINDOW ", "win32", env), { adapter: windowsTerminal, destination: "window" });
+		for (const platform of ["darwin", "linux"] as const) {
+			assert.throws(() => resolveTarget("window", platform, env), /requires Windows Terminal on Windows/);
+		}
+	}
+});
+
+test("Windows Terminal is detected only on Windows", () => {
 	assert.deepEqual(resolveTarget("", "win32", { WT_SESSION: "parent" }), { adapter: windowsTerminal, destination: "pane" });
-	for (const destination of ["pane", "tab", "window"]) {
+	for (const destination of ["pane", "tab"]) {
 		assert.deepEqual(resolveTarget(destination, "win32", { WT_SESSION: "parent" }), { adapter: windowsTerminal, destination });
 	}
-	assert.deepEqual(resolveTarget("window", "win32", {}), { adapter: windowsTerminal, destination: "window" });
-	assert.throws(() => resolveTarget("invalid", "win32", { WT_SESSION: "parent" }), /pane or tab or window/);
-	assert.throws(() => resolveTarget("tab", "win32", {}), /inside Windows Terminal or Warp/);
-	assert.throws(() => resolveTarget("window", "darwin", {}), /inside Warp/);
-	assert.throws(() => resolveTarget("window", "darwin", { WT_SESSION: "inherited" }), /not supported on darwin/);
+	assert.throws(() => resolveTarget("tab", "win32", {}), /inside Herdr or Windows Terminal/);
+	for (const platform of ["darwin", "linux"] as const) {
+		assert.throws(() => resolveTarget("tab", platform, {}), /inside Herdr/);
+		assert.throws(() => resolveTarget("tab", platform, { WT_SESSION: "inherited" }), /inside Herdr/);
+	}
 });

@@ -5,13 +5,8 @@ The original session stays open.
 
 ## Supported terminals
 
-| Terminal         | Platform             | Destinations            | Default |
-| ---------------- | -------------------- | ----------------------- | ------- |
-| Windows Terminal | Windows              | `pane`, `tab`, `window` | `pane`  |
-| Warp             | Windows, macOS (zsh) | `tab`, `window`         | `tab`   |
-
-Warp tabs open in the currently focused Warp window.
-Paths containing `{{` are not supported with Warp.
+`pane` and `tab` open in the terminal running Pi: [Herdr](https://herdr.dev) (Windows, macOS, Linux) or Windows Terminal.
+`window` opens a new Windows Terminal window on Windows.
 
 ## Install
 
@@ -25,6 +20,8 @@ pi install git:github.com/vadimtrifonov/pi-fork-out
 /clone-out [pane|tab|window]  # Duplicate the current session at the current position (default: `pane`)
 /fork-out  [pane|tab|window]  # Create a new fork from a previous user message (default: `pane`)
 ```
+
+A fork ends before the selected user message and restores it as an editable draft.
 
 ## License
 
