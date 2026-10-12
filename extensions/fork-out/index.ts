@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import {
 	UserMessageSelectorComponent,
 	type ExtensionAPI,
@@ -7,21 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createBranch, getForkChoices, getPendingForkDraft, markForkDraftApplied, type ForkChoice } from "./sessions.ts";
 import { resolveTarget, type LaunchTarget } from "./terminals/index.ts";
-
-function getPiInvocation(): [string, ...string[]] {
-	const piEntry = process.argv[1];
-	if (piEntry) {
-		const piCli = resolve(piEntry);
-		if (existsSync(piCli)) return [process.execPath, piCli];
-
-		// mise installations are versioned, so an update can remove this process's entrypoint.
-		const normalizedEntry = piCli.replaceAll("\\", "/").toLowerCase();
-		if (normalizedEntry.includes("/mise/installs/")) {
-			return [process.platform === "win32" ? "mise.exe" : "mise", "exec", "--", "pi"];
-		}
-	}
-	throw new Error("Could not locate the Pi CLI entrypoint");
-}
 
 function parseTarget(
 	command: "clone-out" | "fork-out",
@@ -80,10 +63,9 @@ async function openBranch(
 ): Promise<void> {
 	let sessionFile: string | undefined;
 	try {
-		const piInvocation = getPiInvocation();
 		sessionFile = createBranch(ctx.sessionManager, leafId, draftText);
 		await target.adapter.launch({
-			argv: [...piInvocation, "--session", sessionFile],
+			sessionFile,
 			cwd: ctx.cwd,
 			destination: target.destination,
 		});
@@ -107,7 +89,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("clone-out", {
 		description:
-			"Clone the current session in Warp (tab/window, default: tab) or Windows Terminal (pane/tab/window, default: pane)",
+			"Clone the current session into a new pane, tab, or window (default: pane)",
 		handler: async (args, ctx) => {
 			const target = parseTarget("clone-out", args, ctx);
 			if (!target) return;
@@ -124,7 +106,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("fork-out", {
 		description:
-			"Fork from a previous user message in Warp (tab/window, default: tab) or Windows Terminal (pane/tab/window, default: pane)",
+			"Fork from a previous user message into a new pane, tab, or window (default: pane)",
 		handler: async (args, ctx) => {
 			const target = parseTarget("fork-out", args, ctx);
 			if (!target) return;

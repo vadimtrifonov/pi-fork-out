@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { SessionManager, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import extension from "../extensions/fork-out/index.ts";
 import { getPendingForkDraft } from "../extensions/fork-out/sessions.ts";
 import type { LaunchRequest } from "../extensions/fork-out/terminals/index.ts";
-import { warp } from "../extensions/fork-out/terminals/warp.ts";
+import { herdr } from "../extensions/fork-out/terminals/herdr.ts";
 
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 
 function harness(t: TestContext) {
 	const root = mkdtempSync(join(tmpdir(), "pi-fork-out-workflow-"));
 	const source = SessionManager.create(root, join(root, "sessions"));
-	const previousTerm = process.env.TERM_PROGRAM;
-	process.env.TERM_PROGRAM = "WarpTerminal";
+	const previousHerdr = process.env.HERDR_ENV;
+	process.env.HERDR_ENV = "1";
 	t.after(() => {
-		if (previousTerm === undefined) delete process.env.TERM_PROGRAM; else process.env.TERM_PROGRAM = previousTerm;
+		if (previousHerdr === undefined) delete process.env.HERDR_ENV; else process.env.HERDR_ENV = previousHerdr;
 		rmSync(root, { recursive: true, force: true });
 	});
 	const commands = new Map<string, Command>();
@@ -37,9 +37,7 @@ function harness(t: TestContext) {
 	return { source, ctx, ui, commands, notifications, start: () => start({ type: "session_start" }, ctx) };
 }
 
-const supportedHost = process.platform === "win32" || process.platform === "darwin";
-
-test("commands prepare Pi argv, delegate launching, and preserve copies on adapter failure", { skip: !supportedHost }, async (t) => {
+test("commands prepare sessions, delegate launching, and preserve copies on adapter failure", async (t) => {
 	const h = harness(t);
 	h.source.appendMessage({ role: "user", content: "First prompt", timestamp: 1 });
 	const selected = h.source.appendMessage({ role: "user", content: "Second prompt", timestamp: 2 });
@@ -48,7 +46,7 @@ test("commands prepare Pi argv, delegate launching, and preserve copies on adapt
 	const original = readFileSync(parentFile, "utf8");
 	const requests: LaunchRequest[] = [];
 	let fail = false;
-	t.mock.method(warp, "launch", async (request: LaunchRequest) => {
+	t.mock.method(herdr, "launch", async (request: LaunchRequest) => {
 		requests.push(request);
 		if (fail) throw new Error("adapter failed");
 	});
@@ -58,10 +56,9 @@ test("commands prepare Pi argv, delegate launching, and preserve copies on adapt
 		for (const command of ["clone-out", "fork-out"]) {
 			await h.commands.get(command)!.handler("", h.ctx);
 			const request = requests.at(-1)!;
-			const file = request.argv.at(-1)!;
-			assert.deepEqual(request.argv, [process.execPath, resolve(process.argv[1]), "--session", file]);
+			const file = request.sessionFile;
 			assert.equal(request.cwd, h.ctx.cwd);
-			assert.equal(request.destination, "tab");
+			assert.equal(request.destination, "pane");
 			assert.ok(existsSync(file));
 			const copy = SessionManager.open(file);
 			assert.equal(copy.getHeader()!.parentSession, parentFile);
@@ -80,14 +77,14 @@ test("commands prepare Pi argv, delegate launching, and preserve copies on adapt
 	assert.equal(readFileSync(parentFile, "utf8"), original);
 });
 
-test("invalid destinations, cancelled selection, and non-interactive mode create no copies or launches", { skip: !supportedHost }, async (t) => {
+test("invalid destinations, cancelled selection, and non-interactive mode create no copies or launches", async (t) => {
 	const h = harness(t);
 	h.source.appendMessage({ role: "user", content: "Prompt", timestamp: 1 });
 	const files = readdirSync(h.source.getSessionDir());
-	const launch = t.mock.method(warp, "launch", async () => {});
-	await h.commands.get("fork-out")!.handler("pane", h.ctx);
+	const launch = t.mock.method(herdr, "launch", async () => {});
+	await h.commands.get("fork-out")!.handler("invalid", h.ctx);
 	assert.equal(h.ui.custom.mock.callCount(), 0);
-	assert.match(h.notifications.at(-1)!.message, /tab or window/);
+	assert.equal(h.notifications.at(-1)!.message, "/fork-out: Use pane, tab, or window (default: pane)");
 	await h.commands.get("fork-out")!.handler("tab", h.ctx);
 	assert.equal(h.ui.custom.mock.callCount(), 1);
 	h.ctx.mode = "rpc";

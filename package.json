@@ -1,7 +1,7 @@
 {
   "name": "pi-fork-out",
   "version": "0.1.3",
-  "description": "Open cloned or forked Pi sessions in Warp tabs/windows or Windows Terminal panes/tabs/windows",
+  "description": "Open cloned or forked Pi sessions in Herdr panes/tabs or Windows Terminal panes/tabs/windows",
   "type": "module",
   "license": "MIT",
   "author": "Vadim Trifonov",
@@ -18,7 +18,7 @@
     "pi-extension",
     "pi-coding-agent",
     "windows-terminal",
-    "warp-terminal",
+    "herdr",
     "session-branching"
   ],
   "files": [
