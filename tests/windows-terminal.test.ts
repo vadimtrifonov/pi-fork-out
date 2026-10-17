@@ -5,59 +5,78 @@ import { EventEmitter } from "node:events";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { windowsTerminal } from "../extensions/fork-out/terminals/windows-terminal.ts";
 
-test("Windows Terminal preserves the Pi invocation and paths without leaking Herdr context", async (t) => {
+const request = { destination: "tab" as const, cwd: "project folder", sessionFile: "session path 'Ω & [brackets] $value.jsonl" };
+
+function mockSpawn(t: TestContext, error?: Error) {
+	const calls: { command: string; args: string[]; options: SpawnOptions }[] = [];
+	const unref = t.mock.fn();
+	t.mock.method(childProcess, "spawn", (command: string, args: string[], options: SpawnOptions) => {
+		calls.push({ command, args, options });
+		const child = Object.assign(new EventEmitter(), { unref });
+		queueMicrotask(() => error ? child.emit("error", error) : child.emit("spawn"));
+		return child;
+	});
+	syncBuiltinESMExports();
+	t.after(() => {
+		t.mock.restoreAll();
+		syncBuiltinESMExports();
+	});
+	return { calls, unref };
+}
+
+test("Windows Terminal launches each destination without inheriting Herdr context", async (t) => {
 	const previousHerdr = process.env.HERDR_ENV;
 	process.env.HERDR_ENV = "1";
 	t.after(() => {
 		if (previousHerdr === undefined) delete process.env.HERDR_ENV; else process.env.HERDR_ENV = previousHerdr;
-		t.mock.restoreAll();
-		syncBuiltinESMExports();
 	});
-	const calls: { command: string; args: string[]; options: SpawnOptions }[] = [];
-	let fail = false;
-	let unrefs = 0;
-	t.mock.method(childProcess, "spawn", (command: string, args: string[], options: SpawnOptions) => {
-		calls.push({ command, args, options });
-		const child = Object.assign(new EventEmitter(), { unref() { unrefs++; } });
-		queueMicrotask(() => fail ? child.emit("error", new Error("spawn failed")) : child.emit("spawn"));
-		return child;
-	});
-	syncBuiltinESMExports();
-	const sessionFile = "session path 'Ω & [brackets] $value.jsonl";
-	for (const destination of ["pane", "tab", "window"] as const) {
-		await windowsTerminal.launch({ destination, cwd: "project folder", sessionFile });
+	const { calls, unref } = mockSpawn(t);
+	const destinations = [
+		{ destination: "right", args: ["--window", "0", "split-pane", "--vertical"], windowsHide: true },
+		{ destination: "down", args: ["--window", "0", "split-pane", "--horizontal"], windowsHide: true },
+		{ destination: "tab", args: ["--window", "0", "new-tab"], windowsHide: true },
+		{ destination: "window", args: ["--window", "new", "new-tab"], windowsHide: false },
+	] as const;
+	for (const { destination, args, windowsHide } of destinations) {
+		await windowsTerminal.launch({ ...request, destination });
 		const call = calls.at(-1)!;
 		assert.equal(call.command, "wt.exe");
 		assert.deepEqual(call.args, [
-			"--window", destination === "window" ? "new" : "0",
-			...(destination === "pane" ? ["split-pane", "--vertical"] : ["new-tab"]),
-			"--startingDirectory", "project folder", process.execPath, resolve(process.argv[1]), "--session", sessionFile,
+			...args, "--startingDirectory", request.cwd,
+			process.execPath, resolve(process.argv[1]), "--session", request.sessionFile,
 		]);
-		assert.equal(call.options.windowsHide, destination !== "window");
+		assert.equal(call.options.windowsHide, windowsHide);
 		assert.equal(call.options.detached, true);
 		assert.equal(call.options.stdio, "ignore");
 		assert.ok(Object.keys(call.options.env!).every((key) => !key.toUpperCase().startsWith("HERDR_")));
 		const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH")!;
 		assert.equal(call.options.env![pathKey], process.env[pathKey]);
-		assert.equal(process.env.HERDR_ENV, "1", "Do not change the parent environment");
 	}
-	assert.equal(unrefs, 3);
-	fail = true;
-	await assert.rejects(windowsTerminal.launch({ destination: "tab", cwd: ".", sessionFile }), /spawn failed/);
-	assert.equal(unrefs, 3);
+	assert.equal(process.env.HERDR_ENV, "1", "Do not change the parent environment");
+	assert.equal(unref.mock.callCount(), destinations.length);
+});
 
+test("Windows Terminal reports spawn failures", async (t) => {
+	const { unref } = mockSpawn(t, new Error("spawn failed"));
+	await assert.rejects(windowsTerminal.launch(request), /spawn failed/);
+	assert.equal(unref.mock.callCount(), 0);
+});
+
+test("a missing Pi entrypoint falls back only for mise installations", async (t) => {
+	const { calls } = mockSpawn(t);
 	const previousEntry = process.argv[1];
 	t.after(() => { process.argv[1] = previousEntry; });
 	const missing = join(tmpdir(), `pi-fork-out-missing-${randomUUID()}`);
 	process.argv[1] = join(missing, "mise", "installs", "pi", "cli.js");
-	fail = false;
-	await windowsTerminal.launch({ destination: "window", cwd: ".", sessionFile });
-	assert.deepEqual(calls.at(-1)!.args.slice(5), ["mise.exe", "exec", "--", "pi", "--session", sessionFile]);
+	await windowsTerminal.launch(request);
+	assert.deepEqual(calls[0].args, [
+		"--window", "0", "new-tab", "--startingDirectory", request.cwd,
+		"mise.exe", "exec", "--", "pi", "--session", request.sessionFile,
+	]);
 	process.argv[1] = join(missing, "unknown", "cli.js");
-	const callCount = calls.length;
-	assert.throws(() => windowsTerminal.launch({ destination: "window", cwd: ".", sessionFile }), /Could not locate the Pi CLI/);
-	assert.equal(calls.length, callCount);
+	assert.throws(() => windowsTerminal.launch(request), /Could not locate the Pi CLI/);
+	assert.equal(calls.length, 1);
 });

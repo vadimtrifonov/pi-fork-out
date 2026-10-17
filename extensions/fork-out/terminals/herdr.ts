@@ -33,9 +33,10 @@ export const herdr: TerminalAdapter = {
 			throw new Error("Herdr caller context is missing; run inside a Herdr pane");
 		}
 
+		const isPane = destination === "right" || destination === "down";
 		let created: HerdrResult;
-		if (destination === "pane") {
-			created = await run(["pane", "split", "--current", "--direction", "right", "--cwd", cwd, "--no-focus"]);
+		if (isPane) {
+			created = await run(["pane", "split", "--current", "--direction", destination, "--cwd", cwd, "--no-focus"]);
 		} else {
 			// Resolve live caller context: inherited workspace IDs can be stale after a pane move.
 			const current = await run(["pane", "current", "--current"]);
@@ -43,7 +44,7 @@ export const herdr: TerminalAdapter = {
 			if (!workspace) throw new Error("Invalid Herdr response: missing caller workspace_id");
 			created = await run(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--no-focus"]);
 		}
-		const paneId = (destination === "pane" ? created.pane : created.root_pane)?.pane_id;
+		const paneId = (isPane ? created.pane : created.root_pane)?.pane_id;
 		if (!paneId) throw new Error("Invalid Herdr response: missing new pane_id");
 
 		try {

@@ -9,7 +9,7 @@ const result = (value: unknown): Reply => ({ stdout: JSON.stringify({ result: va
 const paneCreated = result({ type: "pane_info", pane: { pane_id: "w2:p2" } });
 const agentStarted = result({ type: "agent_started" });
 const agentFocused = result({ type: "agent_info" });
-const request = { destination: "pane" as const, cwd: "project 'Ω & [brackets] $value", sessionFile: "session 'Ω & [brackets] $value.jsonl" };
+const request = { destination: "right" as const, cwd: "project 'Ω & [brackets] $value", sessionFile: "session 'Ω & [brackets] $value.jsonl" };
 
 function mockHerdr(t: TestContext, replies: Reply[]) {
 	const env = { HERDR_ENV: "1", HERDR_PANE_ID: "w1:p1", HERDR_WORKSPACE_ID: "stale-workspace", HERDR_BIN_PATH: "/tools/herdr binary" };
@@ -41,17 +41,18 @@ function mockHerdr(t: TestContext, replies: Reply[]) {
 }
 
 test("Herdr targets the caller, preserves paths as argv, and focuses only after managed startup", async (t) => {
-	for (const destination of ["pane", "tab"] as const) {
+	for (const destination of ["right", "down", "tab"] as const) {
 		await t.test(destination, async (t) => {
-			const replies = destination === "pane" ? [paneCreated] : [
+			const isPane = destination !== "tab";
+			const replies = isPane ? [paneCreated] : [
 				result({ type: "pane_info", pane: { workspace_id: "w2" } }),
 				result({ type: "tab_created", root_pane: { pane_id: "w2:p2" } }),
 			];
 			const calls = mockHerdr(t, [...replies, agentStarted, agentFocused]);
 			await herdr.launch({ ...request, destination });
 			assert.ok(calls.every(({ command }) => command === "/tools/herdr binary"));
-			const creation = destination === "pane" ? [
-				["pane", "split", "--current", "--direction", "right", "--cwd", request.cwd, "--no-focus"],
+			const creation = isPane ? [
+				["pane", "split", "--current", "--direction", destination, "--cwd", request.cwd, "--no-focus"],
 			] : [
 				["pane", "current", "--current"],
 				["tab", "create", "--workspace", "w2", "--cwd", request.cwd, "--no-focus"],

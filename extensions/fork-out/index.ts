@@ -6,6 +6,18 @@ import {
 import { createBranch, getForkChoices, getPendingForkDraft, markForkDraftApplied, type ForkChoice } from "./sessions.ts";
 import { resolveTarget, type LaunchTarget } from "./terminals/index.ts";
 
+function completeDestination(prefix: string) {
+	const choices = [
+		{ value: "right", description: "New pane to the right" },
+		{ value: "down", description: "New pane below" },
+		{ value: "tab", description: "New tab" },
+		{ value: "window", description: "New Windows Terminal window" },
+	];
+	const query = prefix.trimStart().toLowerCase();
+	const matches = choices.filter(({ value }) => value !== query && value.startsWith(query));
+	return matches.length > 0 ? matches.map((choice) => ({ ...choice, label: choice.value })) : null;
+}
+
 function parseTarget(
 	command: "clone-out" | "fork-out",
 	args: string,
@@ -69,7 +81,9 @@ async function openBranch(
 			cwd: ctx.cwd,
 			destination: target.destination,
 		});
-		ctx.ui.notify(`Opened ${action.toLowerCase()} in a new ${target.destination}`, "info");
+		const location = target.destination === "right" ? "pane to the right"
+			: target.destination === "down" ? "pane below" : target.destination;
+		ctx.ui.notify(`Opened ${action.toLowerCase()} in a new ${location}`, "info");
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		const kept = sessionFile ? `\nSession copy kept at: ${sessionFile}` : "";
@@ -89,7 +103,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("clone-out", {
 		description:
-			"Clone the current session into a new pane, tab, or window (default: pane)",
+			"Clone the current session into a new pane, tab, or window (default: pane to the right)",
+		getArgumentCompletions: completeDestination,
 		handler: async (args, ctx) => {
 			const target = parseTarget("clone-out", args, ctx);
 			if (!target) return;
@@ -106,7 +121,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("fork-out", {
 		description:
-			"Fork from a previous user message into a new pane, tab, or window (default: pane)",
+			"Fork from a previous user message into a new pane, tab, or window (default: pane to the right)",
+		getArgumentCompletions: completeDestination,
 		handler: async (args, ctx) => {
 			const target = parseTarget("fork-out", args, ctx);
 			if (!target) return;

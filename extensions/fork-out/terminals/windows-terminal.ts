@@ -21,7 +21,8 @@ function getPiInvocation(): string[] {
 export const windowsTerminal: TerminalAdapter = {
 	isCurrent: (env, platform) => platform === "win32" && Boolean(env.WT_SESSION),
 	launch({ sessionFile, cwd, destination }) {
-		const action = destination === "pane" ? ["split-pane", "--vertical"] : ["new-tab"];
+		const action = destination === "right" ? ["split-pane", "--vertical"]
+			: destination === "down" ? ["split-pane", "--horizontal"] : ["new-tab"];
 		const window = destination === "window" ? "new" : "0";
 		const args = ["--window", window, ...action, "--startingDirectory", cwd, ...getPiInvocation(), "--session", sessionFile];
 		return new Promise<void>((resolve, reject) => {
