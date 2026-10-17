@@ -1,9 +1,7 @@
-import {
-	UserMessageSelectorComponent,
-	type ExtensionAPI,
-	type ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
-import { createBranch, getForkChoices, getPendingForkDraft, markForkDraftApplied, type ForkChoice } from "./sessions.ts";
+import { contentText } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { selectForkEntry } from "./picker.ts";
+import { createBranch, getPendingForkDraft, markForkDraftApplied } from "./sessions.ts";
 import { resolveTarget, type LaunchTarget } from "./terminals/index.ts";
 
 function completeDestination(prefix: string) {
@@ -35,43 +33,12 @@ function parseTarget(
 	}
 }
 
-async function selectForkChoice(
-	ctx: ExtensionCommandContext,
-	choices: ForkChoice[],
-): Promise<ForkChoice | undefined> {
-	const selectedId = await ctx.ui.custom<string | undefined>((tui, _theme, _keybindings, done) => {
-		const selector = new UserMessageSelectorComponent(
-			choices.map(({ entry, text }) => ({ id: entry.id, text })),
-			(entryId) => done(entryId),
-			() => done(undefined),
-			choices.at(-1)?.entry.id,
-		);
-		const messageList = selector.getMessageList();
-
-		const component = {
-			focused: false,
-			render(width: number) {
-				// Don't cover a tool dialog that temporarily takes keyboard focus.
-				return this.focused ? selector.render(width) : [];
-			},
-			invalidate: () => selector.invalidate(),
-			handleInput: (data: string) => {
-				messageList.handleInput(data);
-				tui.requestRender();
-			},
-		};
-		return component;
-	}, { overlay: true });
-
-	return choices.find(({ entry }) => entry.id === selectedId);
-}
-
 async function openBranch(
 	action: "Clone" | "Fork",
 	ctx: ExtensionCommandContext,
 	target: LaunchTarget,
 	leafId: string | null,
-	draftText?: string,
+	draftText?: string | null,
 ): Promise<void> {
 	let sessionFile: string | undefined;
 	try {
@@ -121,22 +88,26 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("fork-out", {
 		description:
-			"Fork from a previous user message into a new pane, tab, or window (default: pane to the right)",
+			"Fork from the active branch into a new pane, tab, or window (default: pane to the right)",
 		getArgumentCompletions: completeDestination,
 		handler: async (args, ctx) => {
 			const target = parseTarget("fork-out", args, ctx);
 			if (!target) return;
 
-			const choices = getForkChoices(ctx.sessionManager);
-			if (choices.length === 0) {
-				ctx.ui.notify("No user messages to fork from", "error");
+			const entries = ctx.sessionManager.getBranch();
+			if (entries.length === 0) {
+				ctx.ui.notify("Nothing to fork yet", "error");
 				return;
 			}
 
-			const choice = await selectForkChoice(ctx, choices);
-			if (!choice) return;
+			const entry = await selectForkEntry(ctx, entries);
+			if (!entry) return;
 
-			await openBranch("Fork", ctx, target, choice.entry.parentId, choice.text);
+			if (entry.type === "message" && entry.message.role === "user") {
+				await openBranch("Fork", ctx, target, entry.parentId, contentText(entry.message.content, ""));
+			} else {
+				await openBranch("Fork", ctx, target, entry.id, null);
+			}
 		},
 	});
 }
