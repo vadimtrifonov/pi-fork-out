@@ -36,13 +36,13 @@ export const herdr: TerminalAdapter = {
 		const isPane = destination === "right" || destination === "down";
 		let created: HerdrResult;
 		if (isPane) {
-			created = await run(["pane", "split", "--current", "--direction", destination, "--cwd", cwd, "--no-focus"]);
+			created = await run(["pane", "split", "--current", "--direction", destination, "--cwd", cwd, "--focus"]);
 		} else {
 			// Resolve live caller context: inherited workspace IDs can be stale after a pane move.
 			const current = await run(["pane", "current", "--current"]);
 			const workspace = current.pane?.workspace_id;
 			if (!workspace) throw new Error("Invalid Herdr response: missing caller workspace_id");
-			created = await run(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--no-focus"]);
+			created = await run(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--focus"]);
 		}
 		const paneId = (isPane ? created.pane : created.root_pane)?.pane_id;
 		if (!paneId) throw new Error("Invalid Herdr response: missing new pane_id");
@@ -52,7 +52,6 @@ export const herdr: TerminalAdapter = {
 				"agent", "start", `pi-fork-${randomUUID().slice(0, 12)}`, "--kind", "pi", "--pane", paneId,
 				"--", "--session", sessionFile,
 			]);
-			await run(["agent", "focus", paneId]);
 		} catch (error) {
 			// A timeout can arrive after Pi starts; keep the pane and session for recovery.
 			throw new Error(`${error instanceof Error ? error.message : String(error)}\nHerdr pane kept at: ${paneId}`);
