@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { createBranch, getForkChoices, getPendingForkDraft } from "../extensions/fork-out/sessions.ts";
+import { createBranch, getPendingForkDraft } from "../extensions/fork-out/sessions.ts";
 
 function sourceSession(t: TestContext): SessionManager {
 	const directory = mkdtempSync(join(tmpdir(), "pi-fork-out-sessions-"));
@@ -17,6 +17,7 @@ test("cloning copies only the selected path, preserves metadata, and leaves the 
 	source.appendModelChange("openai", "gpt-4o");
 	const first = source.appendMessage({ role: "user", content: "First prompt", timestamp: 1 });
 	source.appendCustomEntry("other-extension", { preserved: true });
+	const draft = source.appendCustomEntry("pi-fork-out-fork-draft", { text: "Pending prompt" });
 	source.appendCompaction("Summary", first, 500);
 	const leaf = source.appendThinkingLevelChange("high");
 	source.branch(first);
@@ -32,6 +33,7 @@ test("cloning copies only the selected path, preserves metadata, and leaves the 
 	assert.notEqual(copy.getSessionId(), source.getSessionId());
 	assert.equal(copy.getHeader()!.parentSession, parentFile);
 	assert.equal(copy.getCwd(), source.getCwd());
+	assert.deepEqual(getPendingForkDraft(copy), { id: draft, text: "Pending prompt" });
 	assert.deepEqual(copy.getEntries(), JSON.parse(JSON.stringify(source.getBranch())));
 	assert.equal(copy.getEntry(alternative), undefined);
 	assert.equal(source.getLeafId(), leaf);
@@ -44,9 +46,10 @@ test("forking excludes the chosen message, stores its draft, and supports the fi
 	const first = source.appendMessage({ role: "user", content: "First prompt", timestamp: 1 });
 	const parent = source.appendCustomEntry("other-extension", { value: 1 });
 	const second = source.appendMessage({ role: "user", content: [{ type: "text", text: "Second " }, { type: "text", text: "prompt" }], timestamp: 2 });
-	source.appendMessage({ role: "user", content: "  ", timestamp: 3 });
-	const choices = getForkChoices(source);
-	assert.deepEqual(choices.map(({ entry, text }) => [entry.id, text]), [[first, "First prompt"], [second, "Second prompt"]]);
+	const choices = [
+		{ entry: source.getEntry(first)!, text: "First prompt" },
+		{ entry: source.getEntry(second)!, text: "Second prompt" },
+	];
 
 	for (const choice of choices) {
 		const copy = SessionManager.open(createBranch(source, choice.entry.parentId, choice.text));

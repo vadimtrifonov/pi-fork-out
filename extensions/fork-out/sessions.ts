@@ -1,15 +1,14 @@
 import { writeFileSync } from "node:fs";
-import { contentText } from "@earendil-works/pi-ai";
-import { SessionManager, type ExtensionAPI, type ExtensionContext, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const FORK_DRAFT = "pi-fork-out-fork-draft";
 const FORK_DRAFT_APPLIED = "pi-fork-out-fork-draft-applied";
 
 type SessionSource = ExtensionContext["sessionManager"];
 type ForkDraft = { id: string; text: string };
-export type ForkChoice = { entry: SessionEntry; text: string };
 
-export function createBranch(source: SessionSource, leafId: string | null, draftText?: string): string {
+// Omit draftText to preserve draft state; pass null to fork without an inherited draft.
+export function createBranch(source: SessionSource, leafId: string | null, draftText?: string | null): string {
 	const parentSession = source.getSessionFile();
 	if (!parentSession) throw new Error("Session persistence is disabled; start Pi without --no-session");
 
@@ -17,7 +16,12 @@ export function createBranch(source: SessionSource, leafId: string | null, draft
 	// Branch only a detached copy; never replace the running session.
 	const snapshot = SessionManager.inMemory(source.getCwd(), undefined, leafId ? source.getEntries() : undefined);
 	if (leafId) snapshot.createBranchedSession(leafId);
-	if (draftText !== undefined) snapshot.appendCustomEntry(FORK_DRAFT, { text: draftText });
+	if (draftText === null) {
+		const draft = getPendingForkDraft(snapshot);
+		if (draft) snapshot.appendCustomEntry(FORK_DRAFT_APPLIED, { draftId: draft.id });
+	} else if (draftText !== undefined) {
+		snapshot.appendCustomEntry(FORK_DRAFT, { text: draftText });
+	}
 
 	const branch = SessionManager.create(source.getCwd(), source.getSessionDir(), { parentSession });
 	const sessionFile = branch.getSessionFile();
@@ -31,16 +35,6 @@ export function createBranch(source: SessionSource, leafId: string | null, draft
 		flag: "wx",
 	});
 	return sessionFile;
-}
-
-export function getForkChoices(source: SessionSource): ForkChoice[] {
-	const choices: ForkChoice[] = [];
-	for (const entry of source.getEntries()) {
-		if (entry.type !== "message" || entry.message.role !== "user") continue;
-		const text = contentText(entry.message.content, "");
-		if (text.trim()) choices.push({ entry, text });
-	}
-	return choices;
 }
 
 export function getPendingForkDraft(source: SessionSource): ForkDraft | undefined {

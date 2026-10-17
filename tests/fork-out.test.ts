@@ -8,6 +8,7 @@ import extension from "../extensions/fork-out/index.ts";
 import { getPendingForkDraft } from "../extensions/fork-out/sessions.ts";
 import type { LaunchRequest } from "../extensions/fork-out/terminals/index.ts";
 import { herdr } from "../extensions/fork-out/terminals/herdr.ts";
+import { assistantMessage } from "./fixtures.ts";
 
 type Command = Parameters<ExtensionAPI["registerCommand"]>[1];
 
@@ -28,12 +29,12 @@ function harness(t: TestContext) {
 		custom: t.mock.fn(async (): Promise<string | undefined> => undefined),
 		setEditorText: t.mock.fn((_text: string) => {}),
 	};
+	const ctx = { cwd: root, mode: "tui", sessionManager: source, ui } as unknown as ExtensionCommandContext;
 	extension({
 		on(_event: string, handler: typeof start) { start = handler; },
 		registerCommand(name: string, command: Command) { commands.set(name, command); },
-		appendEntry(customType: string, data: unknown) { source.appendCustomEntry(customType, data); },
+		appendEntry(customType: string, data: unknown) { (ctx.sessionManager as SessionManager).appendCustomEntry(customType, data); },
 	} as unknown as ExtensionAPI);
-	const ctx = { cwd: root, mode: "tui", sessionManager: source, ui } as unknown as ExtensionCommandContext;
 	return { source, ctx, ui, commands, notifications, start: () => start({ type: "session_start" }, ctx) };
 }
 
@@ -131,6 +132,105 @@ test("launch failure keeps the session copy and reports its path", async (t) => 
 	assert.equal(notification.level, "error");
 	assert.match(notification.message, /adapter failed/);
 	assert.ok(notification.message.includes(sessionFile));
+});
+
+test("forking after an assistant reply preserves the full history and opens without a draft", async (t) => {
+	const h = harness(t);
+	h.source.appendMessage({ role: "user", content: "Review the file", timestamp: 1 });
+	h.source.appendMessage(assistantMessage("Checking the file", {
+		stopReason: "toolUse",
+		content: [{ type: "toolCall", id: "read-1", name: "read", arguments: { path: "index.ts" } }],
+	}));
+	h.source.appendMessage({ role: "toolResult", toolCallId: "read-1", toolName: "read", content: [{ type: "text", text: "File contents" }], isError: false, timestamp: 2 });
+	const reply = h.source.appendMessage(assistantMessage("", {
+		content: [{ type: "thinking", thinking: "Reasoning", thinkingSignature: "signature" }, { type: "text", text: "The review is complete.\nNo changes are needed." }],
+		endTurn: true,
+	}));
+	const later = h.source.appendMessage({ role: "user", content: "Next question", timestamp: 3 });
+	const parentFile = h.source.getSessionFile()!;
+	const original = readFileSync(parentFile, "utf8");
+	h.ui.custom.mock.mockImplementation(async () => reply);
+	const launch = t.mock.method(herdr, "launch", async (_request: LaunchRequest) => {});
+	await h.commands.get("fork-out")!.handler("tab", h.ctx);
+	assert.equal(launch.mock.callCount(), 1);
+	const request = launch.mock.calls[0].arguments[0];
+	assert.equal(request.destination, "tab");
+	const copy = SessionManager.open(request.sessionFile);
+	assert.deepEqual(copy.getEntries(), h.source.getBranch(reply));
+	assert.equal(copy.getEntry(later), undefined);
+	assert.equal(copy.getHeader()!.parentSession, parentFile);
+	assert.equal(getPendingForkDraft(copy), undefined);
+	h.ctx.sessionManager = copy;
+	await h.start();
+	assert.equal(h.ui.setEditorText.mock.callCount(), 0);
+	assert.equal(h.source.getLeafId(), later);
+	assert.equal(readFileSync(parentFile, "utf8"), original);
+});
+
+test("forking at a historical draft marker keeps the entry without restoring its draft", async (t) => {
+	const h = harness(t);
+	h.source.appendMessage({ role: "user", content: "Earlier context", timestamp: 1 });
+	const draft = h.source.appendCustomEntry("pi-fork-out-fork-draft", { text: "Historical prompt" });
+	await h.start();
+	assert.equal(getPendingForkDraft(h.source), undefined);
+	const editorCalls = h.ui.setEditorText.mock.callCount();
+	const leaf = h.source.appendMessage({ role: "user", content: "Submitted prompt", timestamp: 2 });
+	const original = readFileSync(h.source.getSessionFile()!, "utf8");
+	h.ui.custom.mock.mockImplementation(async () => draft);
+	const launch = t.mock.method(herdr, "launch", async (_request: LaunchRequest) => {});
+
+	await h.commands.get("fork-out")!.handler("tab", h.ctx);
+
+	assert.equal(launch.mock.callCount(), 1);
+	const copy = SessionManager.open(launch.mock.calls[0].arguments[0].sessionFile);
+	assert.deepEqual(copy.getEntry(draft), h.source.getEntry(draft));
+	assert.equal(copy.getEntry(leaf), undefined);
+	assert.equal(getPendingForkDraft(copy), undefined);
+	h.ctx.sessionManager = copy;
+	await h.start();
+	assert.equal(h.ui.setEditorText.mock.callCount(), editorCalls);
+	assert.equal(h.source.getLeafId(), leaf);
+	assert.equal(readFileSync(h.source.getSessionFile()!, "utf8"), original);
+});
+
+test("forking after compaction preserves compacted context without a draft", async (t) => {
+	for (const keepRecent of [true, false]) {
+		await t.test(keepRecent ? "retained messages" : "summary only", async (t) => {
+			const h = harness(t);
+			h.source.appendMessage({ role: "system", content: "System checkpoint", timestamp: 0 });
+			const old = h.source.appendMessage({ role: "user", content: "Summarized prompt", timestamp: 1 });
+			h.source.appendMessage(assistantMessage("Summarized reply"));
+			const kept = h.source.appendMessage({ role: "user", content: "Retained prompt", timestamp: 2 });
+			h.source.appendMessage(assistantMessage("Retained reply"));
+			const summary = "Decisions and progress so far.";
+			const compaction = h.source.appendCompaction(summary, keepRecent ? kept : null, 50000);
+			const later = h.source.appendMessage({ role: "user", content: "Later prompt", timestamp: 3 });
+			const parentFile = h.source.getSessionFile()!;
+			const original = readFileSync(parentFile, "utf8");
+			h.ui.custom.mock.mockImplementation(async () => compaction);
+			const launch = t.mock.method(herdr, "launch", async (_request: LaunchRequest) => {});
+			await h.commands.get("fork-out")!.handler("tab", h.ctx);
+			assert.equal(launch.mock.callCount(), 1);
+			const copy = SessionManager.open(launch.mock.calls[0].arguments[0].sessionFile);
+			assert.deepEqual(copy.getEntries(), JSON.parse(JSON.stringify(h.source.getBranch(compaction))));
+			assert.ok(copy.getEntry(old), "raw pre-compaction history is preserved");
+			assert.equal(copy.getEntry(later), undefined);
+			assert.equal(copy.getHeader()!.parentSession, parentFile);
+			assert.equal(getPendingForkDraft(copy), undefined);
+			const context = copy.buildSessionContext().messages;
+			assert.deepEqual(context.map((message) => message.role), keepRecent
+				? ["system", "compactionSummary", "user", "assistant"]
+				: ["system", "compactionSummary"]);
+			assert.equal(context[0].role === "system" && context[0].content, "System checkpoint");
+			assert.equal(context[1].role === "compactionSummary" && context[1].summary, summary);
+			if (keepRecent) assert.equal(context[2].role === "user" && context[2].content, "Retained prompt");
+			h.ctx.sessionManager = copy;
+			await h.start();
+			assert.equal(h.ui.setEditorText.mock.callCount(), 0);
+			assert.equal(h.source.getLeafId(), later);
+			assert.equal(readFileSync(parentFile, "utf8"), original);
+		});
+	}
 });
 
 test("invalid destinations, cancelled selection, and non-interactive mode create no copies or launches", async (t) => {
