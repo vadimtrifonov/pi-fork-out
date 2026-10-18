@@ -1,22 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import type { TerminalAdapter } from "./index.ts";
-
-function getPiInvocation(): string[] {
-	const piEntry = process.argv[1];
-	if (piEntry) {
-		const piCli = resolve(piEntry);
-		if (existsSync(piCli)) return [process.execPath, piCli];
-
-		// mise installations are versioned, so an update can remove this process's entrypoint.
-		const normalizedEntry = piCli.replaceAll("\\", "/").toLowerCase();
-		if (normalizedEntry.includes("/mise/installs/")) {
-			return ["mise.exe", "exec", "--", "pi"];
-		}
-	}
-	throw new Error("Could not locate the Pi CLI entrypoint");
-}
+import { getPiInvocation } from "./pi-command.ts";
 
 export const windowsTerminal: TerminalAdapter = {
 	isCurrent: (env, platform) => platform === "win32" && Boolean(env.WT_SESSION),
