@@ -67,7 +67,7 @@ test("the muted preview follows selection without changing the original entry", 
 	assert.ok(h.render().some((line) => line.includes("› • user: Latest message")));
 	assert.ok(h.fg.mock.calls.some(({ arguments: [color, text] }) => color === "muted" && text === "Latest message"));
 	h.component.handleInput!("\x1b[A");
-	assert.deepEqual(h.preview(), ["First line", "   Second line", "Third line…"]);
+	assert.deepEqual(h.preview(), ["First line Second line Third line Fourth line", "", ""]);
 	assert.equal(h.tui.requestRender.mock.callCount(), 1);
 	h.component.handleInput!("\r");
 	assert.equal(await h.selection, h.entries[0]);
@@ -78,7 +78,8 @@ test("mixed choices retain native role labels and preview only the assistant rep
 	const reply = assistantMessage("", {
 		content: [
 			{ type: "thinking", thinking: "Private reasoning" },
-			{ type: "text", text: "\x1b[32mReview complete\x1b[0m\nFirst finding\nSecond finding\nMore details" },
+			{ type: "text", text: "\x1b[32mReview complete\x1b[0m\nFirst finding\nSecond finding" },
+			{ type: "text", text: "More details" },
 		],
 	});
 	const h = picker(t, ["Review this change", assistantMessage("Still checking", { stopReason: "toolUse" }), reply]);
@@ -87,12 +88,74 @@ test("mixed choices retain native role labels and preview only the assistant rep
 	assert.ok(h.render().some((line) => line.includes("assistant: Review complete")));
 	assert.ok(h.render().some((line) => line.includes("Still checking")));
 	assert.ok(!h.render().some((line) => line.includes("Private reasoning")));
-	assert.deepEqual(h.preview(), ["Review complete", "First finding", "Second finding…"]);
+	assert.deepEqual(h.preview(), ["Review complete First finding Second finding More details", "", ""]);
 	h.type("Review complete");
 	assert.ok(h.render().some((line) => line.includes("(1/1)")));
 	h.component.handleInput!("\r");
 	assert.equal(await h.selection, h.entries[2]);
 	assert.deepEqual(h.source.getEntries(), entries);
+});
+
+test("formatted replies fill the preview with reflowed content in both layouts", async (t) => {
+	const reply = [
+		"# Summary", "", "**Implemented** the compact preview.", "", "",
+		"- Removed blank lines and indentation.", "- Reflowed text across all three rows.", "",
+		"> More useful context fits before truncation.",
+	].join("\n");
+	const expected = "# Summary **Implemented** the compact preview. - Removed blank lines and indentation. - Reflowed text across all three rows. > More useful context fits before truncation.";
+	for (const rows of [24, 60]) {
+		const h = picker(t, [assistantMessage(reply)], rows);
+		const preview = h.preview();
+		assert.ok(preview.every((line) => line.trim().length > 0));
+		assert.equal(preview.join(" "), expected);
+		h.component.handleInput!("\x03");
+		assert.equal(await h.selection, undefined);
+	}
+});
+
+test("preview preserves Markdown and code verbatim apart from whitespace", async (t) => {
+	const source = "## **Summary**\n\n```ts\nconst value = 2 ** 3;\n```\n\n[Guide](https://example.com) and \\*literal\\*.";
+	const h = picker(t, [assistantMessage(source)]);
+	const entries = structuredClone(h.entries);
+	assert.deepEqual(h.preview(120), ["## **Summary** ```ts const value = 2 ** 3; ``` [Guide](https://example.com) and \\*literal\\*.", "", ""]);
+	h.component.handleInput!("\r");
+	assert.equal(await h.selection, h.entries[0]);
+	assert.deepEqual(h.entries, entries);
+});
+
+test("preview truncation counts reflowed rows rather than source lines", async (t) => {
+	const text = "alpha\n\nbeta\n\ngamma\n\ndelta\n\nepsilon\n\nzeta";
+	const h = picker(t, [text, `${text}\n\neta\n\ntheta\n\niota`]);
+	assert.deepEqual(h.preview(20), ["alpha beta gamma", "delta epsilon", "zeta eta theta…"]);
+	h.component.handleInput!("\x1b[A");
+	assert.deepEqual(h.preview(20), ["alpha beta gamma", "delta epsilon", "zeta"]);
+	h.component.handleInput!("\x03");
+	assert.equal(await h.selection, undefined);
+});
+
+test("preview sanitizes terminal controls and leaves empty content blank", async (t) => {
+	const text = "\x1b[31mA\x1b[0m\r\n\tB \x07 \x00 C\x1b]8;;https://example.com\x07 link\x1b]8;;\x07\rD";
+	const h = picker(t, [" \n\t\n ", "---\n\n***", text]);
+	assert.deepEqual(h.preview(), ["A B C link D", "", ""]);
+	h.component.handleInput!("\x1b[A");
+	assert.deepEqual(h.preview(), ["--- ***", "", ""]);
+	h.component.handleInput!("\x1b[A");
+	assert.deepEqual(h.preview(), ["", "", ""]);
+	h.component.handleInput!("\x03");
+	assert.equal(await h.selection, undefined);
+});
+
+test("bash and tool output are reflowed without interpreting Markdown", async (t) => {
+	const source = SessionManager.inMemory();
+	source.appendMessage({ role: "toolResult", toolCallId: "read-1", toolName: "read", content: [{ type: "text", text: "# Heading\n---\n*value*" }], isError: false, timestamp: 1 });
+	source.appendMessage({ role: "bashExecution", command: "echo '**literal**'", output: "# Heading\n---\n*value*", exitCode: 0, cancelled: false, truncated: false, timestamp: 2 });
+	const h = picker(t, source);
+	h.component.handleInput!("\x01");
+	assert.deepEqual(h.preview(), ["echo '**literal**' # Heading --- *value*", "", ""]);
+	h.component.handleInput!("\x1b[A");
+	assert.deepEqual(h.preview(), ["# Heading --- *value*", "", ""]);
+	h.component.handleInput!("\x03");
+	assert.equal(await h.selection, undefined);
 });
 
 test("native filters start in no-tools and retain their state across resize without editing history", async (t) => {
@@ -109,7 +172,7 @@ test("native filters start in no-tools and retain their state across resize with
 	source.appendMessage(assistantMessage("Interrupted reply", { stopReason: "aborted" }));
 	const compaction = source.appendCompaction("Summary checkpoint\nRetained decisions\nRemaining work\nFurther context", first, 12000);
 	source.appendLabelChange(compaction, "Checkpoint");
-	source.appendCustomMessageEntry("context", "Continuation context", true);
+	source.appendCustomMessageEntry("context", [{ type: "text", text: "Continuation" }, { type: "text", text: "context" }], true);
 	source.appendCustomEntry("extension-state", { hidden: true });
 	const original = structuredClone(source.getEntries());
 	const h = picker(t, source);
@@ -128,9 +191,9 @@ test("native filters start in no-tools and retain their state across resize with
 	h.component.handleInput!("T"); // Pi's Shift+T: show label timestamps, not search text.
 	assert.ok(h.render().some((line) => line.includes("[+label time]")));
 	h.type("compaction");
-	assert.deepEqual(h.preview(), ["Summary checkpoint", "Retained decisions", "Remaining work…"]);
+	assert.deepEqual(h.preview(), ["Summary checkpoint Retained decisions Remaining work Further context", "", ""]);
 	h.tui.terminal.rows = 24;
-	assert.deepEqual(h.preview(), ["Summary checkpoint", "Retained decisions", "Remaining work…"]);
+	assert.deepEqual(h.preview(), ["Summary checkpoint Retained decisions Remaining work Further context", "", ""]);
 	assert.ok(h.render().some((line) => line.includes("[all]") && line.includes("[+label time]")));
 	h.component.handleInput!("\r");
 	assert.equal(await h.selection, source.getEntry(compaction));

@@ -6,12 +6,12 @@ import { Container, Key, matchesKey, Spacer, TruncatedText, truncateToWidth, wra
 function previewText(entry: SessionEntry | undefined): string {
 	if (!entry) return "";
 	if (entry.type === "compaction" || entry.type === "branch_summary") return entry.summary;
-	if (entry.type === "custom_message") return contentText(entry.content, "");
+	if (entry.type === "custom_message") return contentText(entry.content, " ");
 	if (entry.type === "message") {
 		const message = entry.message;
 		if (message.role === "bashExecution") return `${message.command}\n${message.output}`;
 		if ("content" in message) {
-			return contentText(message.content, "") || (message.role === "assistant" ? message.errorMessage ?? "" : "");
+			return contentText(message.content, " ") || (message.role === "assistant" ? message.errorMessage ?? "" : "");
 		}
 	}
 	return "";
@@ -43,9 +43,8 @@ export async function selectForkEntry(
 				const compact = tui.terminal.rows < 32;
 				const contentWidth = Math.max(1, width - 4);
 				const content = stripVTControlCharacters(previewText(list.getSelectedNode()?.entry))
-					.replace(/\r\n?/g, "\n")
-					.replace(/\t/g, "   ")
-					.replace(/[\x00-\x08\x0B-\x1F\x7F-\x9F]/g, "")
+					.replace(/[\x00-\x08\x0E-\x1F\x7F-\x9F]/g, "")
+					.replace(/\s+/g, " ")
 					.trim();
 				const preview = wrapTextWithAnsi(content, contentWidth);
 				if (preview.length > 3) preview[2] = `${truncateToWidth(preview[2], contentWidth - 1, "")}…`;
