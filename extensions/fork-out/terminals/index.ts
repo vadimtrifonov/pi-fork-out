@@ -1,3 +1,4 @@
+import { ghostty } from "./ghostty.ts";
 import { herdr } from "./herdr.ts";
 import { windowsTerminal } from "./windows-terminal.ts";
 
@@ -20,8 +21,8 @@ export interface LaunchTarget {
 	destination: Destination;
 }
 
-// Herdr must win over a WT_SESSION inherited from an outer Windows Terminal.
-const adapters = [herdr, windowsTerminal];
+// Herdr owns panes and tabs even when an outer terminal's environment is inherited.
+const adapters = [herdr, ghostty, windowsTerminal];
 
 export function resolveTarget(
 	args: string,
@@ -30,8 +31,9 @@ export function resolveTarget(
 ): LaunchTarget {
 	const destination = args.trim().toLowerCase() || "right";
 	if (destination === "window") {
-		if (platform !== "win32") throw new Error("Opening a terminal window requires Windows Terminal on Windows");
-		return { adapter: windowsTerminal, destination };
+		if (platform === "win32") return { adapter: windowsTerminal, destination };
+		if (platform === "darwin") return { adapter: ghostty, destination };
+		throw new Error("Opening a terminal window requires Ghostty on macOS or Windows Terminal on Windows");
 	}
 	if (destination !== "right" && destination !== "down" && destination !== "tab") {
 		throw new Error("Use right, down, tab, or window (default: right)");
@@ -40,6 +42,7 @@ export function resolveTarget(
 	if (!adapter) {
 		throw new Error(platform === "win32"
 			? "Run this command inside Herdr or Windows Terminal to create a pane or tab"
+			: platform === "darwin" ? "Run this command inside Herdr or Ghostty to create a pane or tab"
 			: "Run this command inside Herdr to create a pane or tab");
 	}
 	return { adapter, destination };

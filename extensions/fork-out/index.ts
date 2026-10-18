@@ -9,7 +9,7 @@ function completeDestination(prefix: string) {
 		{ value: "right", description: "New pane to the right" },
 		{ value: "down", description: "New pane below" },
 		{ value: "tab", description: "New tab" },
-		{ value: "window", description: "New Windows Terminal window" },
+		{ value: "window", description: "New terminal window" },
 	];
 	const query = prefix.trimStart().toLowerCase();
 	const matches = choices.filter(({ value }) => value !== query && value.startsWith(query));

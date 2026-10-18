@@ -65,18 +65,13 @@ test("Windows Terminal reports spawn failures", async (t) => {
 	assert.equal(unref.mock.callCount(), 0);
 });
 
-test("a missing Pi entrypoint falls back only for mise installations", async (t) => {
+test("Windows Terminal rejects a missing Pi entrypoint before launching", (t) => {
 	const { calls } = mockSpawn(t);
 	const previousEntry = process.argv[1];
 	t.after(() => { process.argv[1] = previousEntry; });
-	const missing = join(tmpdir(), `pi-fork-out-missing-${randomUUID()}`);
-	process.argv[1] = join(missing, "mise", "installs", "pi", "cli.js");
-	await windowsTerminal.launch(request);
-	assert.deepEqual(calls[0].args, [
-		"--window", "0", "new-tab", "--startingDirectory", request.cwd,
-		"mise.exe", "exec", "--", "pi", "--session", request.sessionFile,
-	]);
-	process.argv[1] = join(missing, "unknown", "cli.js");
-	assert.throws(() => windowsTerminal.launch(request), /Could not locate the Pi CLI/);
-	assert.equal(calls.length, 1);
+	process.argv[1] = join(tmpdir(), `pi-fork-out-missing-${randomUUID()}`, "cli.js");
+	assert.throws(() => windowsTerminal.launch(request), {
+		message: "The Pi CLI entrypoint is no longer available. Restart Pi and try again.",
+	});
+	assert.equal(calls.length, 0);
 });

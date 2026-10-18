@@ -1,7 +1,7 @@
 {
   "name": "pi-fork-out",
-  "version": "0.1.3",
-  "description": "Open cloned or forked Pi sessions in Herdr panes/tabs or Windows Terminal panes/tabs/windows",
+  "version": "1.0.0",
+  "description": "Clone or fork Pi sessions into new terminal panes, tabs, or windows while keeping the original session open",
   "type": "module",
   "license": "MIT",
   "author": "Vadim Trifonov",
@@ -18,6 +18,7 @@
     "pi-extension",
     "pi-coding-agent",
     "windows-terminal",
+    "ghostty",
     "herdr",
     "session-branching"
   ],

@@ -6,7 +6,8 @@ The original session stays open.
 ## Supported terminals/multiplexers
 
 - [Herdr](https://herdr.dev) (Windows, macOS, Linux)
-- Windows Terminal
+- [Ghostty](https://ghostty.org) (macOS)
+- Windows Terminal (Windows)
 
 ## Install
 
@@ -21,8 +22,15 @@ pi install git:github.com/vadimtrifonov/pi-fork-out
 /fork-out  [right|down|tab|window]  # Create a new fork from an earlier point (default: right)
 ```
 
+`window` opens Ghostty on macOS or Windows Terminal on Windows, including from inside Herdr.
+
 Selecting a user message forks before it and restores its text as an editable draft.
 Selecting any other entry forks after it with an empty editor.
+
+## Limitations
+
+- Ghostty runs Pi through its configured shell.
+  Variables exported only in the originating terminal are not copied.
 
 ## License
 
