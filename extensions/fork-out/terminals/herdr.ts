@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import type { TerminalAdapter } from "./index.ts";
 
 type HerdrResult = {
@@ -7,8 +6,8 @@ type HerdrResult = {
 	root_pane?: { pane_id?: string };
 };
 
-async function run(args: string[]): Promise<HerdrResult> {
-	const stdout = await new Promise<string>((resolve, reject) => {
+function run(args: string[]): Promise<string> {
+	return new Promise<string>((resolve, reject) => {
 		execFile(process.env.HERDR_BIN_PATH || "herdr", args, {
 			encoding: "utf8", windowsHide: true, timeout: 45_000,
 		}, (error, stdout, stderr) => {
@@ -22,7 +21,18 @@ async function run(args: string[]): Promise<HerdrResult> {
 			} else resolve(stdout);
 		});
 	});
-	return JSON.parse(stdout).result;
+}
+
+async function query(args: string[]): Promise<HerdrResult> {
+	return JSON.parse(await run(args)).result;
+}
+
+// Herdr panes run PowerShell by default on Windows and the user's Unix shell elsewhere.
+function quote(value: string): string {
+	// PowerShell also reads the typographic quotes U+2018 to U+201B as single quotes.
+	if (process.platform === "win32") return `'${value.replace(/['\u2018-\u201b]/g, "$&$&")}'`;
+	// Backslashes leave the quotes too: fish, unlike bash and zsh, reads them as escapes inside single quotes.
+	return `'${value.replace(/['\\]/g, "'\\$&'")}'`;
 }
 
 export const herdr: TerminalAdapter = {
@@ -32,29 +42,26 @@ export const herdr: TerminalAdapter = {
 		if (!process.env.HERDR_PANE_ID) {
 			throw new Error("Herdr caller context is missing; run inside a Herdr pane");
 		}
+		// The path is typed into a shell, whose line editor would act on control characters.
+		if (/[\x00-\x1f\x7f]/.test(sessionFile)) {
+			throw new Error("Herdr: the session path cannot contain ASCII control characters.");
+		}
 
 		const isPane = destination === "right" || destination === "down";
 		let created: HerdrResult;
 		if (isPane) {
-			created = await run(["pane", "split", "--current", "--direction", destination, "--cwd", cwd, "--focus"]);
+			created = await query(["pane", "split", "--current", "--direction", destination, "--cwd", cwd, "--focus"]);
 		} else {
 			// Resolve live caller context: inherited workspace IDs can be stale after a pane move.
-			const current = await run(["pane", "current", "--current"]);
+			const current = await query(["pane", "current", "--current"]);
 			const workspace = current.pane?.workspace_id;
 			if (!workspace) throw new Error("Invalid Herdr response: missing caller workspace_id");
-			created = await run(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--focus"]);
+			created = await query(["tab", "create", "--workspace", workspace, "--cwd", cwd, "--focus"]);
 		}
 		const paneId = (isPane ? created.pane : created.root_pane)?.pane_id;
 		if (!paneId) throw new Error("Invalid Herdr response: missing new pane_id");
 
-		try {
-			await run([
-				"agent", "start", `pi-fork-${randomUUID().slice(0, 12)}`, "--kind", "pi", "--pane", paneId,
-				"--", "--session", sessionFile,
-			]);
-		} catch (error) {
-			// A timeout can arrive after Pi starts; keep the pane and session for recovery.
-			throw new Error(`${error instanceof Error ? error.message : String(error)}\nHerdr pane kept at: ${paneId}`);
-		}
+		// `agent start` requires a name; a typed command leaves the fork unnamed, like a Pi started by hand.
+		await run(["pane", "run", paneId, `pi --session ${quote(sessionFile)}`]);
 	},
 };

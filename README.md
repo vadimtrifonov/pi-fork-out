@@ -27,10 +27,11 @@ pi install git:github.com/vadimtrifonov/pi-fork-out
 Selecting a user message forks before it and restores its text as an editable draft.
 Selecting any other entry forks after it with an empty editor.
 
-## Limitations
+## Limits
 
 - Ghostty runs Pi through its configured shell.
   Variables exported only in the originating terminal are not copied.
+- On Windows, Herdr panes must run PowerShell; `cmd.exe` is not supported.
 
 ## License
 
